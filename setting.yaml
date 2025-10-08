@@ -1,0 +1,4 @@
+INPUT_CHAIN: "Gravity"
+OUTPUT_CHAIN: "Arbitrum One"
+AMOUNT_OUT: [0,0]
+TIMEOUT: [30,60]
