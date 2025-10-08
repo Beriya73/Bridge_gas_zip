@@ -1,5 +1,5 @@
 /develop
 /.venv
 /.idea
-/__pycache__
-
+__pycache__
+private_keys.txt
