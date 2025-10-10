@@ -1,4 +1,5 @@
-INPUT_CHAIN: "Gravity"
-OUTPUT_CHAIN: "Arbitrum One"
+INPUT_CHAIN: "Arbitrum One"
+OUTPUT_CHAIN: "Gravity"
+WITHDRAW_MAX: true
 AMOUNT_OUT: [0,0]
 TIMEOUT: [30,60]

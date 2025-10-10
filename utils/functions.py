@@ -56,7 +56,6 @@ def request_gas_zip(
             timeout=timeout
         )
         response.raise_for_status()
-        print("Запрос был отправлен на URL:")
         return Box(response.json())
     except requests.exceptions.HTTPError as errh:
         logger.error(f"HTTP Error: {errh}")
