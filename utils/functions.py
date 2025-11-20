@@ -5,7 +5,25 @@ from typing import Optional, Tuple
 from utils.decorator import retry
 import requests
 
+def check_load_configuration(config, private_keys, chains_list):
+    if config is None or private_keys is None or chains_list is None:
+        if config is None:
+            logger.error("Файл setting.yaml пуст")
+        if private_keys is None:
+            logger.error("Файл private_keys.txt пуст")
+        if chains_list is None:
+            logger.error("Файл chain_list.json пуст")
+        return False
+    return True
+
 def search_two_chain(data: Box) -> Tuple[Optional[Box], Optional[Box]]:
+    """
+    Поиск входной и выходной сети согласно данным INPUT_CHAIN
+    OUTPUT_CHAIN
+    из config.yaml
+    :param data:
+    :return:
+    """
     # Обрабатываем успешный ответ
     input_chain = None
     output_chain = None
@@ -22,7 +40,7 @@ def search_two_chain(data: Box) -> Tuple[Optional[Box], Optional[Box]]:
             print(f"Неправильное название входной сети {config.INPUT_CHAIN}")
         if not output_chain:
             print(f"Неправильное название выходной сети {config.OUTPUT_CHAIN}")
-
+        # Выводим на печать названия всех сетей
         chains_list =  sorted(data.chains, key=lambda chain: getattr(chain, 'name', '').lower())
         print("Доступные сети:")
         columns = 5
@@ -74,6 +92,15 @@ def request_gas_zip(
     return None
 
 def get_quote(input_chain: Box, output_chain:Box, deposit_wei, from_address, to_address):
+    """
+
+    :param input_chain:
+    :param output_chain:
+    :param deposit_wei:
+    :param from_address:
+    :param to_address:
+    :return:
+    """
     base_url = "https://backend.gas.zip/v2/quotes"
     deposit_chain = input_chain.chain
     outbound_chain = output_chain.chain
@@ -88,6 +115,12 @@ def get_quote(input_chain: Box, output_chain:Box, deposit_wei, from_address, to_
         return None
 
 def search_chain(chain_id,chains_list:Box):
+    """
+    Получаем список rpc
+    :param chain_id:
+    :param chains_list:
+    :return list of Box:
+    """
     for chain in chains_list:
         if chain_id == chain.chainId:
             return BoxList(chain.rpc)

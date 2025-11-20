@@ -3,7 +3,8 @@ from loguru import logger
 import random
 from utils.blockchain import TransactionSender
 from utils.config import config, private_keys, chains_list
-from utils.functions import (search_two_chain,
+from utils.functions import (check_load_configuration,
+                             search_two_chain,
                              request_gas_zip,
                              get_quote,
                              search_chain)
@@ -11,17 +12,13 @@ from utils.functions import (search_two_chain,
 
 def main():
     """Основная функция программы."""
-    # 1. Проверяем загрузку конфигурации
-    if config is None or private_keys is None or chains_list is None:
-        if config is None:
-            logger.error("Файл setting.yaml пуст, выходим!")
-        if private_keys is None:
-            logger.error("Файл private_keys.txt пуст, выходим!")
-        if chains_list is None:
-            logger.error("Файл chain_list.json пуст, выходим!")
+
+    # 1. Проверяем загрузку из файла config.yaml, private_keys.txt и chain_list.json
+    if not check_load_configuration(config, private_keys, chains_list):
+        logger.error("Выходим!")
         return
 
-    # 2. Получаем и проверяем настройки задержки
+    # 2. Получаем и проверяем настройки задержки и таймаут
     try:
         min_delay, max_delay = config.TIMEOUT
         withdraw_max = config.WITHDRAW_MAX
@@ -33,19 +30,28 @@ def main():
         logger.error(
             f"Ошибка в конфигурации TIMEOUT в setting.yaml. Убедитесь, что он задан как [min, max]. Ошибка: {e}")
         return
+
     # Проверяем параметры вывода нативной валюты
-    if withdraw_max and amount_out:
+    if withdraw_max and any(amount_out):
         logger.error(f"Взаимоисключащие параметры WITHDRAW_MAX:{withdraw_max},"
                      f" amount_out:[{amount_out[0]},{amount_out[1]}], завершение...")
         return
-    # 3. Настройка сетей
-    url = "https://backend.gas.zip/v2/chains"
-    data_chain = request_gas_zip(url=url)
-    input_chain, output_chain = search_two_chain(data_chain)
-    if input_chain is None or output_chain is None:
-        logger.error("Не удалось определить входящую или выходящую сеть. Выходим!")
-        return
 
+    # 3. Получаем данные о всех поддерживаемых сетях в бридже Gas_zip
+    url = "https://backend.gas.zip/v2/chains"
+    support_chains = request_gas_zip(url=url)
+    # Ищем входную и выходную сеть в поддерживаемых сетях
+    input_chain, output_chain = search_two_chain(support_chains)
+
+    if input_chain is None or output_chain is None:
+        logger.error("Не удалось определить название сети. Выходим!")
+        return
+    # Проверка выходной сети на перевод средств
+    # if not output_chain.inbound:
+    #     logger.error(f"Перевод средств в сеть {config.OUTPUT_CHAIN} в настоящее время недоступен через Gas.zip")
+    #     return
+
+    # Получаем rpc для входной сети из списка всех сетей chain_list.org
     chain_rpc = search_chain(input_chain.chain, chains_list)
     if chain_rpc is None:
         logger.error(f"Не смог найти RPC для сети {input_chain.name} в файле chain_rpc.json")
@@ -55,16 +61,34 @@ def main():
 
     for i, private_key in enumerate(private_keys):
         try:
-            sender = TransactionSender(private_key, chain_rpc[0].url, input_chain)
+            sender = None
+            # Перебираем все доступные RPC для этой сети
+            for rpc_item in chain_rpc:
+                try:
+                    current_url = rpc_item.url
+                    # Пытаемся инициализировать отправителя
+                    temp_sender = TransactionSender(private_key, current_url, input_chain)
+
+                    # Делаем тестовый легкий запрос, чтобы проверить RPC (например, получить номер блока или chain_id)
+                    # Если RPC мертвый, тут вылетит ошибка, и мы перейдем к следующему
+                    temp_sender.w3.eth.get_block_number()
+
+                    sender = temp_sender
+                    break  # Если успешно, выходим из цикла перебора RPC
+                except Exception as e:
+                    logger.warning(f"RPC {current_url} не отвечает: {e}. Пробуем следующий...")
+
+            if sender is None:
+                logger.error(f"Не удалось подключиться ни к одному RPC для сети {input_chain.name}")
+                continue
 
             logger.info(f"[{i + 1}/{len(private_keys)}] Работаем с кошельком: {sender.address}")
             logger.info(f"Баланс: {sender.w3.from_wei(sender.balance, 'ether')} {input_chain.symbol}")
 
             # 5. проверка минимального баланса
             min_amount = int(input_chain.minOutboundNative)
-            preliminary_amount = None
-            if withdraw_max:
-                preliminary_amount = int(sender.balance * 0.95)  # Берем 95% для первичной оценки
+            # if withdraw_max:
+            preliminary_amount = int(sender.balance * 0.95)  # Берем 95% для первичной оценки
             if amount_out:
                 num = random.uniform(amount_out[0], amount_out[1])
                 preliminary_amount = round(num, 6)
@@ -74,7 +98,7 @@ def main():
             if quote_data is None:
                 logger.error("Не удалось получить quote от API. Пропускаем кошелек.")
                 continue
-            sender.quote = quote_data
+
 
             # 7. Оцениваем точную стоимость газа из quote
             try:
@@ -118,12 +142,11 @@ def main():
             if final_quote is None:
                 logger.error("Не удалось получить финальный quote от API. Пропускаем кошелек.")
                 continue
-            sender.quote = final_quote
 
             # 10. Отправка транзакции
-            tx_hash = sender.send_transaction()
+            tx_hash = sender.send_transaction(final_quote)
             explorer_url = sender.input_chain.explorer.rstrip('/')
-            logger.success(f"Транзакция успешно отправлена! Эксплорер: {explorer_url}/tx/0x{tx_hash.hex()}")
+            logger.success(f"Транзакция успешно отправлена! Эксплорер: {explorer_url}/tx/{tx_hash.hex()}")
 
         except ValueError as e:
             logger.error(f"Проблема с кошельком: {e}")

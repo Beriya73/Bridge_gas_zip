@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 
 from box import Box
 from eth_typing import Hash32, HexStr
@@ -32,18 +32,26 @@ class TransactionSender:
             raise ValueError("Quote не может быть пустым (None)")
         self._quote = new_quote
 
-    def send_transaction(self) -> HexBytes:
+    def send_transaction(self, quote_data: Optional[Box] = None) -> HexBytes:
         """
         Собирает, проверяет, подписывает и отправляет транзакцию.
         Возвращает хэш транзакции в случае успеха.
         """
+        # Если передали новые данные, сохраняем их
+        if quote_data:
+            self.quote = quote_data
+
+        # Проверяем, есть ли данные для транзакции
+        if self._quote is None:
+            raise ValueError("Нет данных quote для отправки транзакции!")
+
         contractDepositTxn = self._quote.contractDepositTxn
 
         # 1. Получаем актуальные параметры газа (EIP-1559)
         latest_block = self.w3.eth.get_block('latest')
         base_fee = latest_block['baseFeePerGas']
         max_priority_fee_per_gas = self.w3.eth.max_priority_fee
-        max_fee_per_gas = int(base_fee*1.25 + max_priority_fee_per_gas)
+        max_fee_per_gas = int(base_fee * 1.25 + max_priority_fee_per_gas)
 
         # 2. Формируем базовые параметры транзакции
         tx_params = {
@@ -63,26 +71,15 @@ class TransactionSender:
             gas_estimate = self.w3.eth.estimate_gas(tx_params)
             tx_params['gas'] = int(gas_estimate * 1.25)  # Добавляем запас 25%
             logger.info(f"Оценка газа: {gas_estimate}, с запасом: {tx_params['gas']}")
-            # print(f"Basefee: {base_fee}")
-            # print(f'maxFeePerGas: {max_fee_per_gas}')
-            # print(f'maxPriorityFeePerGas: {max_priority_fee_per_gas}')
         except Exception as e:
             logger.error(f"Ошибка при оценке газа: {e}")
             raise ValueError("Не удалось оценить газ, транзакция не будет отправлена.")
 
-        # # 4. Финальная проверка баланса перед отправкой
-        # max_gas_cost = tx_params['gas'] * max_fee_per_gas
-        # total_needed = tx_params['value'] + max_gas_cost
-        #
-        # if self.balance < total_needed:
-        #     shortage = total_needed - self.balance
-        #     logger.error(
-        #         f"Недостаточно средств! Баланс: {self.w3.from_wei(self.balance, 'ether')},"
-        #         f" Нужно: {self.w3.from_wei(total_needed, 'ether')}, Не хватает: {self.w3.from_wei(shortage, 'ether')}")
-        #     raise ValueError("Недостаточно средств для отправки транзакции и оплаты газа")
-
         # 5. Подпись и отправка
         signed_tx = self.w3.eth.account.sign_transaction(tx_params, self.private_key)
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        tx_receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+        # Ждем чека, чтобы убедиться, что транзакция ушла в блокчейн
+        self.w3.eth.wait_for_transaction_receipt(tx_hash)
+
         return tx_hash
