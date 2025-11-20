@@ -77,7 +77,7 @@ class TransactionSender:
 
         # 5. Подпись и отправка
         signed_tx = self.w3.eth.account.sign_transaction(tx_params, self.private_key)
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # Ждем чека, чтобы убедиться, что транзакция ушла в блокчейн
         self.w3.eth.wait_for_transaction_receipt(tx_hash)
