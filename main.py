@@ -146,7 +146,7 @@ def main():
             # 10. Отправка транзакции
             tx_hash = sender.send_transaction(final_quote)
             explorer_url = sender.input_chain.explorer.rstrip('/')
-            logger.success(f"Транзакция успешно отправлена! Эксплорер: {explorer_url}/tx/{tx_hash.hex()}")
+            logger.success(f"Транзакция успешно отправлена! Эксплорер: {explorer_url}/tx/0x{tx_hash.hex()}")
 
         except ValueError as e:
             logger.error(f"Проблема с кошельком: {e}")
