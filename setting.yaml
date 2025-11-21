@@ -1,5 +1,5 @@
 INPUT_CHAIN: "Gravity"
 OUTPUT_CHAIN: "Sepolia"
-WITHDRAW_MAX: false
+WITHDRAW_MAX: true
 AMOUNT_OUT: []
 TIMEOUT: [30,60]
